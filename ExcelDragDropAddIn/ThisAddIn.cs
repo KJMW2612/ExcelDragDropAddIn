@@ -175,10 +175,29 @@ namespace ExcelDragDropAddIn
                     }
                 }
             }
+            // 기존 catch (Exception ex) 부분을 아래와 같이 세분화하여 수정합니다.
+            catch (System.Runtime.InteropServices.COMException comEx) when ((uint)comEx.ErrorCode == 0x800A03EC)
+            {
+                // Excel에서 전형적으로 발생하는 상태 잠금 예외 처리
+                MessageBox.Show(
+                    "이미지를 삽입할 수 없습니다. 아래 사항을 확인해 주세요:\n\n" +
+                    "1. 현재 셀을 더블클릭하여 '글자 입력(편집)' 중인지 확인\n" +
+                    "   (키보드 Esc 키를 누른 뒤 다시 시도해 주세요)\n\n" +
+                    "2. 엑셀 상단에 '제한된 보기' 노란색 바가 떠 있는지 확인\n" +
+                    "   (상단의 '편집 사용' 버튼을 클릭해 주세요)\n\n" +
+                    "3. 현재 시트가 '시트 보호' 상태인지 확인\n" +
+                    "   (검토 탭에서 시트 보호를 해제해 주세요)\n\n" +
+                    "4. 압축을 풀지 않은 ZIP 파일 내부에서 직접 드래그했는지 확인\n" +
+                    "   (로컬 일반 폴더로 파일을 복사한 뒤 드래그해 주세요)",
+                    "이미지 삽입 제한됨",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning
+                );
+            }
             catch (Exception ex)
             {
-                // UI 스레드 상의 예외 알림
-                MessageBox.Show("이미지 삽입 중 오류가 발생했습니다:\n" + ex.Message, "알림", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                // 기타 예상치 못한 일반 오류 처리
+                MessageBox.Show("이미지 삽입 중 오류가 발생했습니다:\n" + ex.Message, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
