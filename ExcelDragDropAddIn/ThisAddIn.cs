@@ -105,7 +105,7 @@ namespace ExcelDragDropAddIn
         }
 
         /// <summary>
-        /// 드롭된 이미지들을 셀에 배치하고 크기를 조정합니다.
+        /// 드롭된 이미지들을 셀에 배치하고 크기를 조정합니다. (병합 셀 완벽 지원)
         /// </summary>
         private void OnImagesDropped(List<string> filePaths, POINT screenPt)
         {
@@ -118,7 +118,6 @@ namespace ExcelDragDropAddIn
                 object targetObj = activeWindow.RangeFromPoint(screenPt.X, screenPt.Y);
                 Excel.Range targetCell = targetObj as Excel.Range;
 
-                // 마우스 포인터 위치에 셀을 감지하지 못한 경우 현재 선택된 ActiveCell 사용
                 if (targetCell == null)
                 {
                     targetCell = this.Application.ActiveCell;
@@ -140,7 +139,6 @@ namespace ExcelDragDropAddIn
 
                 foreach (string path in filePaths)
                 {
-                    // [안정성 보완 추가] 드롭된 대상이 실제 디렉토리에 존재하는 '파일'인지 사전 검증합니다.
                     if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path))
                     {
                         continue;
@@ -149,36 +147,42 @@ namespace ExcelDragDropAddIn
                     string ext = Path.GetExtension(path).ToLower();
                     if (ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".webp")
                     {
-                        // 다중 파일 드롭 시 아래 행으로 순차 정렬 배치
-                        Excel.Range cell = targetCell.Offset[rowOffset, 0];
+                        // 다중 파일 드롭 시 순차 배치할 기준 셀 계산
+                        Excel.Range baseCell = targetCell.Offset[rowOffset, 0];
 
-                        float left = (float)(double)cell.Left;
-                        float top = (float)(double)cell.Top;
-                        float width = (float)(double)cell.Width;
-                        float height = (float)(double)cell.Height;
+                        // [병합 셀 대응]
+                        // 해당 셀이 속해있는 전체 병합 영역(MergeArea)을 동적으로 가져옵니다.
+                        // 일반 셀인 경우 자기 자신을 반환하므로 일반/병합 환경 모두 자연스럽게 호환됩니다.
+                        Excel.Range targetArea = baseCell.MergeArea;
 
-                        // 이미지 삽입 및 문서 내에 물리적인 파일로 포함 저장 설정
+                        // 병합 영역 전체의 좌표와 크기를 계산합니다.
+                        float left = (float)(double)targetArea.Left;
+                        float top = (float)(double)targetArea.Top;
+                        float width = (float)(double)targetArea.Width;
+                        float height = (float)(double)targetArea.Height;
+
+                        // 이미지 삽입 및 전체 병합 크기에 맞춤 리사이즈
                         Excel.Shape shape = sheet.Shapes.AddPicture(
                             path,
-                            Office.MsoTriState.msoFalse, // LinkToFile
-                            Office.MsoTriState.msoTrue,  // SaveWithDocument
+                            Office.MsoTriState.msoFalse,
+                            Office.MsoTriState.msoTrue,
                             left,
                             top,
                             width,
                             height
                         );
 
-                        // 셀과 함께 이동 및 크기 조정 설정 (Placement = xlMoveAndSize)
                         shape.Placement = Excel.XlPlacement.xlMoveAndSize;
 
-                        rowOffset++;
+                        // [오프셋 계산 개선]
+                        // 일반 셀일 때는 1행씩 내려가고, 
+                        // 병합 셀일 때는 해당 병합 영역이 차지하는 실제 행(Row)의 개수만큼 건너뛰어 다음 사진이 겹치지 않게 합니다.
+                        rowOffset += targetArea.Rows.Count;
                     }
                 }
             }
-            // 기존 catch (Exception ex) 부분을 아래와 같이 세분화하여 수정합니다.
             catch (System.Runtime.InteropServices.COMException comEx) when ((uint)comEx.ErrorCode == 0x800A03EC)
             {
-                // Excel에서 전형적으로 발생하는 상태 잠금 예외 처리
                 MessageBox.Show(
                     "이미지를 삽입할 수 없습니다. 아래 사항을 확인해 주세요:\n\n" +
                     "1. 현재 셀을 더블클릭하여 '글자 입력(편집)' 중인지 확인\n" +
@@ -196,7 +200,6 @@ namespace ExcelDragDropAddIn
             }
             catch (Exception ex)
             {
-                // 기타 예상치 못한 일반 오류 처리
                 MessageBox.Show("이미지 삽입 중 오류가 발생했습니다:\n" + ex.Message, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
